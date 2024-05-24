@@ -1,8 +1,7 @@
-# app/config/database.py
 import motor.motor_asyncio
 
-client = motor.motor_asyncio.AsyncIOMotorClient("mongodb://localhost:27017")
-database = client.selam_bus
+MONGO_DETAILS = "mongodb://localhost:27017"
+client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_DETAILS)
+database = client["selam_transport"]
 
-passenger_collection = database.get_collection("passengers")
-staff_collection = database.get_collection("staff")
+user_collection = database.get_collection("users")

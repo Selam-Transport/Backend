@@ -1,23 +1,33 @@
-# app/routes/user.py
-from fastapi import APIRouter, Depends
-from app.auth.auth import get_current_active_user, get_current_active_passenger, get_current_active_staff
-from app.schemas.passenger import PassengerResponse
-from app.schemas.staff import StaffResponse
-from pydantic import BaseModel
-from typing import Union
+from fastapi import APIRouter, HTTPException, Depends
+from passlib.context import CryptContext
+from app.config.database import user_collection
+from app.models.user import User
+from app.schemas.user import UserCreate, UserResponse
+from bson import ObjectId
 
 router = APIRouter()
 
-@router.get("/users/me", response_model=Union[PassengerResponse, StaffResponse])
-async def read_users_me(current_user: BaseModel = Depends(get_current_active_user)):
-    return current_user
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Endpoint accessible only by passengers
-@router.get("/passenger/reservations")
-async def read_passenger_reservations(current_user: BaseModel = Depends(get_current_active_passenger)):
-    return {"msg": f"Reservations for passenger {current_user['username']}"}
+@router.post("/register", response_model=UserResponse)
+async def register_user(user: UserCreate):
+    existing_user = await user_collection.find_one({"username": user.username})
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Username already registered")
+    
+    hashed_password = pwd_context.hash(user.password)
+    new_user = User(
+        username=user.username,
+        full_name=user.full_name,
+        email=user.email,
+        hashed_password=hashed_password
+    )
+    await user_collection.insert_one(new_user.dict(by_alias=True))
+    return UserResponse(**new_user.dict())
 
-# Endpoint accessible only by staff
-@router.get("/staff/dashboard")
-async def read_staff_dashboard(current_user: BaseModel = Depends(get_current_active_staff)):
-    return {"msg": f"Dashboard for staff {current_user['username']}"}
+@router.post("/login")
+async def login_user(user: UserCreate):
+    user_record = await user_collection.find_one({"username": user.username})
+    if not user_record or not pwd_context.verify(user.password, user_record["hashed_password"]):
+        raise HTTPException(status_code=400, detail="Invalid username or password")
+    return {"message": "Login successful"}
